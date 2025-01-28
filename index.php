@@ -1,217 +1,123 @@
-
-
-<h2>Разделение ФИО на части</h2>
-
 <?php
-function getPartsFromFullname($fullname) {
-    // Разбиваем строку на части по пробелу
-    $parts = explode(' ', $fullname);
-    
-    // Возвращаем массив с ключами 'surname', 'name', 'patronomyc'
-    return [
-        'surname' => $parts[0],
-        'name' => $parts[1],
-        'patronomyc' => $parts[2]
-    ];
+session_start();
+include 'auth.php';
+
+// Проверка авторизации
+if (!getCurrentUser()) {
+    header("Location: login.php");
+    exit();
 }
 
-// Пример использования
-$fullname = 'Алексеев Сергей Васильевич';
-$result = getPartsFromFullname($fullname);
-
-print_r($result);
-
-echo "<br>";
-
-?>
-<h2>Объединение ФИО из частей</h2>
-
-
-<?php
-function getFullnameFromParts($surname, $name, $patronomyc) {
-    // Склеиваем строки через пробел
-    return trim("$surname $name $patronomyc");
+// Запрос дня и месяца рождения, если они не установлены
+if (!isset($_SESSION['birth_day']) || !isset($_SESSION['birth_month'])) {
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['birth_day']) && !empty($_POST['birth_month'])) {
+        $_SESSION['birth_day'] = (int) $_POST['birth_day'];
+        $_SESSION['birth_month'] = (int) $_POST['birth_month'];
+    }
 }
 
-// Пример использования
-$surname = 'Сергеев';
-$name = 'Михаил';
-$patronomyc = 'Дмитриевич';
+// Вычисление дней до дня рождения
+$days_until_birthday = null;
+$birthday_discount = false;
 
-$fullname = getFullnameFromParts($surname, $name, $patronomyc);
-echo $fullname;
+if (isset($_SESSION['birth_day']) && isset($_SESSION['birth_month'])) {
+    $current_date = new DateTime();
+    $this_year_birthday = new DateTime(date('Y') . '-' . $_SESSION['birth_month'] . '-' . $_SESSION['birth_day']);
 
-
-echo "<br>";
-
-?>
-
-<h2>Сокращение фамилии</h2>
-
-<?php
-// Функция для сокращенного имени
-function getShortName($fullname) {
-    // Разбиваем полное имя на части
-    $parts = getPartsFromFullname($fullname);
-    
-    // Формируем строку "Имя Ф."
-    return $parts['name'] . ' ' . mb_substr($parts['surname'], 0, 1) . '.';
-}
-
-// Пример использования
-$shortName = getShortName('Борисов Виталий Игоревич');
-echo $shortName;
-
-
-echo "<br>";
-
-?>
-
-
-
-<h2>Определение пола</h2>
-
-<?php
-// Функция для определения пола
-function getGenderFromName($fullname) {
-    // Разбиваем ФИО на части
-    $parts = getPartsFromFullname($fullname);
-
-    // Изначально суммарный признак пола равен 0
-    $genderScore = 0;
-
-    // Признаки мужского пола
-    if (mb_substr($parts['patronomyc'], -2) === 'ич') {
-        $genderScore++;
-    }
-    if (mb_substr($parts['name'], -1) === 'й' || mb_substr($parts['name'], -1) === 'н') {
-        $genderScore++;
-    }
-    if (mb_substr($parts['surname'], -1) === 'в') {
-        $genderScore++;
-    }
-
-    // Признаки женского пола
-    if (mb_substr($parts['patronomyc'], -3) === 'вна') {
-        $genderScore--;
-    }
-    if (mb_substr($parts['name'], -1) === 'а') {
-        $genderScore--;
-    }
-    if (mb_substr($parts['surname'], -2) === 'ва') {
-        $genderScore--;
-    }
-
-    // Определение пола
-    if ($genderScore > 0) {
-        return 1; // Мужской пол
-    } elseif ($genderScore < 0) {
-        return -1; // Женский пол
+    // Если сегодня день рождения — даем скидку
+    if ($this_year_birthday->format('m-d') === $current_date->format('m-d')) {
+        $birthday_discount = true;
     } else {
-        return 0; // Неопределенный пол
+        // Вычисляем разницу дней
+        if ($this_year_birthday < $current_date) {
+            $this_year_birthday->modify('+1 year'); // Если ДР уже прошел, берем дату следующего года
+        }
+        $days_until_birthday = $current_date->diff($this_year_birthday)->days;
     }
 }
 
-// Пример использования
-$fullname1 = 'Шварцнегер Арнольд Густавович';
-$fullname2 = 'Липницкая Аделия Максимовна';
-$fullname3 = 'аль-Хорезми Мухаммад ибн-Муса';
+// Запись времени входа (если не установлено)
+if (!isset($_SESSION['login_time'])) {
+    $_SESSION['login_time'] = time();
+}
 
-echo getGenderFromName($fullname1); 
-echo "<br>";
-echo getGenderFromName($fullname2);
-echo "<br>";
-echo getGenderFromName($fullname3);
+// Вычисление оставшегося времени акции
+$discount_duration = 24 * 60 * 60; // 24 часа в секундах
+$time_left = $discount_duration - (time() - $_SESSION['login_time']);
 
+if ($time_left > 0) {
+    $hours = floor($time_left / 3600);
+    $minutes = floor(($time_left % 3600) / 60);
+    $seconds = $time_left % 60;
+} else {
+    unset($_SESSION['login_time']); // Акция истекла, сбрасываем время входа
+}
 ?>
 
-<h2>Определение процента полового состава</h2>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Спа Салон</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <h1>Спа Салон "Релакс"</h1>
+        <p>Здравствуйте, <strong><?php echo getCurrentUser(); ?>!</strong></p>
+        <form action="logout.php" method="POST" class="auth-form">
+            <button type="submit">Выйти</button>
+        </form>
+    </header>
+    
+    <main>
+        <h2>Наши услуги</h2>
 
-<?php
-$example_persons_array = [
-    [
-        'fullname' => 'Иванов Иван Иванович',
-        'job' => 'tester',
-    ],
-    [
-        'fullname' => 'Степанова Наталья Степановна',
-        'job' => 'frontend-developer',
-    ],
-    [
-        'fullname' => 'Пащенко Владимир Александрович',
-        'job' => 'analyst',
-    ],
-    [
-        'fullname' => 'Громов Александр Иванович',
-        'job' => 'fullstack-developer',
-    ],
-    [
-        'fullname' => 'Славин Семён Сергеевич',
-        'job' => 'analyst',
-    ],
-    [
-        'fullname' => 'Цой Владимир Антонович',
-        'job' => 'frontend-developer',
-    ],
-    [
-        'fullname' => 'Быстрая Юлия Сергеевна',
-        'job' => 'PR-manager',
-    ],
-    [
-        'fullname' => 'Шматко Антонина Сергеевна',
-        'job' => 'HR-manager',
-    ],
-    [
-        'fullname' => 'аль-Хорезми Мухаммад ибн-Муса',
-        'job' => 'analyst',
-    ],
-    [
-        'fullname' => 'Липницкая Аделия Фёдоровна',
-        'job' => 'android-developer',
-    ],
-    [
-        'fullname' => 'Шварцнегер Арнольд Густавович',
-        'job' => 'babysitter',
-    ],
-];
+        <?php if (!isset($_SESSION['birth_day']) || !isset($_SESSION['birth_month'])): ?>
+            <form method="POST">
+                <label>Введите ваш день рождения:</label>
+                <input type="number" name="birth_day" min="1" max="31" required>
+                <label>Введите месяц рождения:</label>
+                <input type="number" name="birth_month" min="1" max="12" required>
+                <button type="submit">Сохранить</button>
+            </form>
+        <?php else: ?>
+            <?php if ($birthday_discount): ?>
+                <h3>🎉 С Днем Рождения! Вам доступна скидка 5% на все услуги! 🎉</h3>
+            <?php else: ?>
+                <p>До вашего дня рождения осталось <strong><?php echo $days_until_birthday; ?></strong> дней.</p>
+            <?php endif; ?>
+        <?php endif; ?>
 
+        <?php if ($time_left > 0): ?>
+            <p>Ваша персональная скидка действует еще: <strong><?php echo "$hours ч $minutes м $seconds с"; ?></strong></p>
+        <?php endif; ?>
 
-// Функция для определения полового состава аудитории
-function getGenderDescription($persons) {
-    $maleCount = 0;
-    $femaleCount = 0;
-    $undefinedCount = 0;
+        <div class="services">
+            <?php
+            include 'database.php';
+            foreach ($services as $service) {
+                $price = $service['price'];
 
-    // Проходим по всем элементам массива
-    foreach ($persons as $person) {
-        $gender = getGenderFromName($person['fullname']);
-        
-        // Увеличиваем счетчики в зависимости от пола
-        if ($gender === 1) {
-            $maleCount++;
-        } elseif ($gender === -1) {
-            $femaleCount++;
-        } else {
-            $undefinedCount++;
-        }
-    }
-
-    // Общее количество людей
-    $totalCount = count($persons);
-
-    // Вычисляем проценты и округляем до одного знака после запятой
-    $malePercentage = round(($maleCount / $totalCount) * 100, 1);
-    $femalePercentage = round(($femaleCount / $totalCount) * 100, 1);
-    $undefinedPercentage = round(($undefinedCount / $totalCount) * 100, 1);
-
-    // Формируем строку с результатами
-    return "Гендерный состав аудитории:<br>---------------------------<br>" .
-            "Мужчины - $malePercentage%<br>" .
-            "Женщины - $femalePercentage%<br>" .
-            "Не удалось определить - $undefinedPercentage%";
-};
-
-
-echo getGenderDescription($example_persons_array);
-
-?>
+                // Применяем скидку в 5% в день рождения
+                if ($birthday_discount) {
+                    $discounted_price = round($price * 0.95, 2);
+                    echo "<div class='service'>";
+                    echo "<img src='{$service['photo']}' alt='{$service['name']}'>";
+                    echo "<h3>{$service['name']}</h3>";
+                    echo "<p>Цена: <s>{$price}</s> <strong>{$discounted_price} руб.</strong> (Скидка 5%)</p>";
+                    echo "</div>";
+                } else {
+                    echo "<div class='service'>";
+                    echo "<img src='{$service['photo']}' alt='{$service['name']}'>";
+                    echo "<h3>{$service['name']}</h3>";
+                    echo "<p>Цена: {$price} руб.</p>";
+                    echo "</div>";
+                }
+            }
+            ?>
+        </div>
+    </main>
+</body>
+</html>
